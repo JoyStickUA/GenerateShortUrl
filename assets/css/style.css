@@ -1,0 +1,61 @@
+body{
+    background: url("../img/bg.png")no-repeat center;
+    background-size: cover;
+    height: 100vh;
+    padding: 0 0 200px;
+}
+h1{
+    font-size: 48px;
+    color: #ffffff;
+    text-align: center;
+    margin: 20% 0 0 0;
+    font-weight: 600;
+}
+.lead{
+    font-size: 30px;
+    color: #ffffff;
+    text-align: center;
+    margin: 0 0 100px;
+}
+.form_container{
+    margin: 0 0 30px;
+}
+.form-group{
+    display: inline-block;
+    margin-bottom: 0;
+    vertical-align: middle;
+}
+.reduce{
+    width: 100%;
+}
+.short_url{
+    color: #b74933;
+    font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+    font-weight: 600;
+}
+.short_url:hover{
+    color: #b74933;
+    text-decoration: none;
+}
+.counter{
+    color: #ffffff;
+    font-size: 30px;
+}
+.counter_img{
+    margin: 4px 0 0 10px;
+}
+.counter, .counter_img{
+    float: right;
+}
+
+@media (max-width: 767px) {
+    .reduce{
+        max-width: 320px;
+        margin: 15px auto;
+        display: block;
+    }
+    .form-control{
+        max-width: 320px;
+        margin: 0 auto;
+    }
+}
