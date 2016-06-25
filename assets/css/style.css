@@ -1,7 +1,7 @@
 body{
     background: url("../img/bg.png")no-repeat center;
     background-size: cover;
-    height: 100vh;
+    min-height: 100vh;
     padding: 0 0 200px;
 }
 h1{
@@ -33,11 +33,6 @@ h1{
     font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
     font-weight: 600;
 }
-
-
-
-
-
 .short_url:hover{
     color: #b74933;
     text-decoration: none;
@@ -52,7 +47,6 @@ h1{
 .counter, .counter_img{
     float: right;
 }
-
 @media (max-width: 767px) {
     .reduce{
         max-width: 320px;
@@ -60,6 +54,10 @@ h1{
         display: block;
     }
     .form-control{
+        max-width: 320px;
+        margin: 15px auto;
+    }
+    .alert{
         max-width: 320px;
         margin: 0 auto;
     }

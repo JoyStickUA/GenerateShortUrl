@@ -1,4 +1,5 @@
 <?php
+
 class ShortUrl
 {
     protected static $chars = "123456789bcdfghjkmnpqrstvwxyzBCDFGHJKLMNPQRSTVWXYZ";
@@ -8,46 +9,64 @@ class ShortUrl
     protected $pdo;
     protected $timestamp;
 
-    public function __construct(PDO $pdo) {
+    public function __construct(PDO $pdo)
+    {
         $this->pdo = $pdo;
         $this->timestamp = $_SERVER["REQUEST_TIME"];
     }
 
-    public function urlToShortCode($url) {
+    public function urlToShortCode($url, $time)
+    {
         if (empty($url)) {
-            throw new \Exception("Íå ïîëó÷åí àäðåñ URL.");
+            throw new \Exception("ÐÐµ Ð¿Ð¾Ð»ÑƒÑ‡ÐµÐ½ Ð°Ð´Ñ€ÐµÑ URL.");
+        }
+
+        if (empty($time)) {
+            $time = 0;
         }
 
         if ($this->validateUrlFormat($url) == false) {
             throw new \Exception(
-                "Àäðåñ URL èìååò íåïðàâèëüíûé ôîðìàò.");
+                "ÐÐ´Ñ€ÐµÑ URL Ð¸Ð¼ÐµÐµÑ‚ Ð½ÐµÐ¿Ñ€Ð°Ð²Ð¸Ð»ÑŒÐ½Ñ‹Ð¹ Ñ„Ð¾Ñ€Ð¼Ð°Ñ‚.");
+        }
+
+        if ($this->validateLifeFormat($time) == false) {
+            throw new \Exception(
+                "Ð’Ñ€ÐµÐ¼Ñ Ð¶Ð¸Ð·Ð½Ð¸ URL Ð¸Ð¼ÐµÐµÑ‚ Ð½ÐµÐ¿Ñ€Ð°Ð²Ð¸Ð»ÑŒÐ½Ñ‹Ð¹ Ñ„Ð¾Ñ€Ð¼Ð°Ñ‚.");
         }
 
         if (self::$checkUrlExists) {
             if (!$this->verifyUrlExists($url)) {
                 throw new \Exception(
-                    "Àäðåñ URL íå ñóùåñòâóåò.");
+                    "ÐÐ´Ñ€ÐµÑ URL Ð½Ðµ ÑÑƒÑ‰ÐµÑÑ‚Ð²ÑƒÐµÑ‚.");
             }
         }
 
         $shortCode = $this->urlExistsInDb($url);
-        if ($shortCode == false) {
-            $shortCode = $this->createShortCode($url);
+        if ($time != 0 || $shortCode == false) {
+            $shortCode = $this->createShortCode($url, $time);
         }
 
         return $shortCode;
     }
 
-    protected function validateUrlFormat($url) {
+    protected function validateUrlFormat($url)
+    {
         return filter_var($url, FILTER_VALIDATE_URL,
             FILTER_FLAG_HOST_REQUIRED);
     }
 
-    protected function verifyUrlExists($url) {
+    protected function validateLifeFormat($time)
+    {
+        return filter_var(preg_match("/^[0-9]+$/", $time));
+    }
+
+    protected function verifyUrlExists($url)
+    {
         $ch = curl_init();
         curl_setopt($ch, CURLOPT_URL, $url);
         curl_setopt($ch, CURLOPT_NOBODY, true);
-        curl_setopt($ch,  CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
         curl_exec($ch);
         $response = curl_getinfo($ch, CURLINFO_HTTP_CODE);
         curl_close($ch);
@@ -55,8 +74,9 @@ class ShortUrl
         return (!empty($response) && $response != 404);
     }
 
-    protected function urlExistsInDb($url) {
-        $query = "SELECT short_code FROM " . self::$table .
+    protected function urlExistsInDb($url)
+    {
+        $query = "SELECT short_code, date_created, life_url FROM " . self::$table .
             " WHERE long_url = :long_url LIMIT 1";
         $stmt = $this->pdo->prepare($query);
         $params = array(
@@ -65,17 +85,20 @@ class ShortUrl
         $stmt->execute($params);
 
         $result = $stmt->fetch();
-        return (empty($result)) ? false : $result["short_code"];
+        return !(empty($result['short_code']) || $result['short_created'] != $result['life_url']) ? false : $result["short_code"];
     }
 
-    protected function createShortCode($url) {
+    protected function createShortCode($url, $time)
+    {
         $id = $this->insertUrlInDb($url);
         $shortCode = $this->convertIntToShortCode($id);
         $this->insertShortCodeInDb($id, $shortCode);
+        $this->LifeUrl($id, $time);
         return $shortCode;
     }
 
-    protected function insertUrlInDb($url) {
+    protected function insertUrlInDb($url)
+    {
         $query = "INSERT INTO " . self::$table .
             " (long_url, date_created) " .
             " VALUES (:long_url, :timestamp)";
@@ -89,40 +112,42 @@ class ShortUrl
         return $this->pdo->lastInsertId();
     }
 
-    protected function convertIntToShortCode($id) {
+    protected function convertIntToShortCode($id)
+    {
         $id = intval($id);
         if ($id < 1) {
             throw new \Exception(
-                "ID íå ÿâëÿåòñÿ íåêîððåêòíûì öåëûì ÷èñëîì.");
+                "ID Ð½Ðµ ÑÐ²Ð»ÑÐµÑ‚ÑÑ Ð½ÐµÐºÐ¾Ñ€Ñ€ÐµÐºÑ‚Ð½Ñ‹Ð¼ Ñ†ÐµÐ»Ñ‹Ð¼ Ñ‡Ð¸ÑÐ»Ð¾Ð¼.");
         }
 
         $length = strlen(self::$chars);
-        // Ïðîâåðÿåì, ÷òî äëèíà ñòðîêè
-        // áîëüøå ìèíèìóìà - îíà äîëæíà áûòü
-        // áîëüøå 10 ñèìâîëîâ
+        // ÐŸÑ€Ð¾Ð²ÐµÑ€ÑÐµÐ¼, Ñ‡Ñ‚Ð¾ Ð´Ð»Ð¸Ð½Ð° ÑÑ‚Ñ€Ð¾ÐºÐ¸
+        // Ð±Ð¾Ð»ÑŒÑˆÐµ Ð¼Ð¸Ð½Ð¸Ð¼ÑƒÐ¼Ð° - Ð¾Ð½Ð° Ð´Ð¾Ð»Ð¶Ð½Ð° Ð±Ñ‹Ñ‚ÑŒ
+        // Ð±Ð¾Ð»ÑŒÑˆÐµ 10 ÑÐ¸Ð¼Ð²Ð¾Ð»Ð¾Ð²
         if ($length < 10) {
-            throw new \Exception("Äëèíà ñòðîêè ìàëà");
+            throw new \Exception("Ð”Ð»Ð¸Ð½Ð° ÑÑ‚Ñ€Ð¾ÐºÐ¸ Ð¼Ð°Ð»Ð°");
         }
 
         $code = "";
         while ($id > $length - 1) {
-            // Îïðåäåëÿåì çíà÷åíèå ñëåäóþùåãî ñèìâîëà
-            // â êîäå è ïîäãîòàâëèâàåì åãî
+            // ÐžÐ¿Ñ€ÐµÐ´ÐµÐ»ÑÐµÐ¼ Ð·Ð½Ð°Ñ‡ÐµÐ½Ð¸Ðµ ÑÐ»ÐµÐ´ÑƒÑŽÑ‰ÐµÐ³Ð¾ ÑÐ¸Ð¼Ð²Ð¾Ð»Ð°
+            // Ð² ÐºÐ¾Ð´Ðµ Ð¸ Ð¿Ð¾Ð´Ð³Ð¾Ñ‚Ð°Ð²Ð»Ð¸Ð²Ð°ÐµÐ¼ ÐµÐ³Ð¾
             $code = self::$chars[fmod($id, $length)] .
                 $code;
-            // Ñáðàñûâàåì $id äî îñòàâøåãîñÿ çíà÷åíèÿ äëÿ êîíâåðòàöèè
+            // Ð¡Ð±Ñ€Ð°ÑÑ‹Ð²Ð°ÐµÐ¼ $id Ð´Ð¾ Ð¾ÑÑ‚Ð°Ð²ÑˆÐµÐ³Ð¾ÑÑ Ð·Ð½Ð°Ñ‡ÐµÐ½Ð¸Ñ Ð´Ð»Ñ ÐºÐ¾Ð½Ð²ÐµÑ€Ñ‚Ð°Ñ†Ð¸Ð¸
             $id = floor($id / $length);
         }
 
-        // Îñòàâøååñÿ çíà÷åíèå $id ìåíüøå, ÷åì
-        // äëèíà self::$chars
+        // ÐžÑÑ‚Ð°Ð²ÑˆÐµÐµÑÑ Ð·Ð½Ð°Ñ‡ÐµÐ½Ð¸Ðµ $id Ð¼ÐµÐ½ÑŒÑˆÐµ, Ñ‡ÐµÐ¼
+        // Ð´Ð»Ð¸Ð½Ð° self::$chars
         $code = self::$chars[$id] . $code;
         return $code;
     }
 
-    protected function insertShortCodeInDb($id, $code) {
+    protected function insertShortCodeInDb($id, $code)
+    {
         if ($id == null || $code == null) {
-            throw new \Exception("Ïàðàìåòðû ââîäà íåïðàâèëüíûå.");
+            throw new \Exception("ÐŸÐ°Ñ€Ð°Ð¼ÐµÑ‚Ñ€Ñ‹ Ð²Ð²Ð¾Ð´Ð° Ð½ÐµÐ¿Ñ€Ð°Ð²Ð¸Ð»ÑŒÐ½Ñ‹Ðµ.");
         }
         $query = "UPDATE " . self::$table .
             " SET short_code = :short_code WHERE id = :id";
@@ -135,28 +160,45 @@ class ShortUrl
 
         if ($stmnt->rowCount() < 1) {
             throw new \Exception(
-                "Ñòðîêà íå îáíîâëÿåòñÿ êîðîòêèì êîäîì.");
+                "Ð¡Ñ‚Ñ€Ð¾ÐºÐ° Ð½Ðµ Ð¾Ð±Ð½Ð¾Ð²Ð»ÑÐµÑ‚ÑÑ ÐºÐ¾Ñ€Ð¾Ñ‚ÐºÐ¸Ð¼ ÐºÐ¾Ð´Ð¾Ð¼.");
         }
 
         return true;
     }
 
+    protected function LifeUrl($id, $time)
+    {
+        $query = "UPDATE " . self::$table .
+            " SET life_url = :life_url WHERE id = :id";
+        $stmt = $this->pdo->prepare($query);
+        $params = array(
+            "id" => $id,
+            "life_url" => $this->timestamp + 60 * 60 * $time
+        );
+        $stmt->execute($params);
+    }
 
 
-    public function shortCodeToUrl($code, $increment = true) {
+    public function shortCodeToUrl($code, $increment = true)
+    {
         if (empty($code)) {
-            throw new \Exception("Íå çàäàí êîðîòêèé êîä.");
+            throw new \Exception("ÐÐµ Ð·Ð°Ð´Ð°Ð½ ÐºÐ¾Ñ€Ð¾Ñ‚ÐºÐ¸Ð¹ ÐºÐ¾Ð´.");
+        }
+
+        if ($this->validateLifeShortCode($code) == false) {
+            throw new \Exception(
+                "Ð˜ÑÑ‚ÐµÐº ÑÑ€Ð¾Ðº Ð¶Ð¸Ð·Ð½Ð¸ URL");
         }
 
         if ($this->validateShortCode($code) == false) {
             throw new \Exception(
-                "Êîðîòêèé êîä èìååò íåïðàâèëüíûé ôîðìàò.");
+                "ÐšÐ¾Ñ€Ð¾Ñ‚ÐºÐ¸Ð¹ ÐºÐ¾Ð´ Ð¸Ð¼ÐµÐµÑ‚ Ð½ÐµÐ¿Ñ€Ð°Ð²Ð¸Ð»ÑŒÐ½Ñ‹Ð¹ Ñ„Ð¾Ñ€Ð¼Ð°Ñ‚.");
         }
 
         $urlRow = $this->getUrlFromDb($code);
         if (empty($urlRow)) {
             throw new \Exception(
-                "Êîðîòêèé êîä íå ñîäåðæèòñÿ â áàçå.");
+                "ÐšÐ¾Ñ€Ð¾Ñ‚ÐºÐ¸Ð¹ ÐºÐ¾Ð´ Ð½Ðµ ÑÐ¾Ð´ÐµÑ€Ð¶Ð¸Ñ‚ÑÑ Ð² Ð±Ð°Ð·Ðµ.");
         }
 
         if ($increment == true) {
@@ -166,15 +208,36 @@ class ShortUrl
         return $urlRow["long_url"];
     }
 
-    protected function validateShortCode($code) {
+    protected function validateLifeShortCode($code)
+    {
+        $query = "SELECT date_created, life_url FROM " . self::$table .
+            " WHERE short_code = :short_code LIMIT 1";
+        $stmt = $this->pdo->prepare($query);
+        $params = array(
+            "short_code" => $code
+        );
+        $stmt->execute($params);
+        $result = $stmt->fetch();
+        if ($this->timestamp < $result['life_url']) {
+            return true;
+        } elseif ($result['life_url'] == $result['date_created']) {
+            return true;
+        } else {
+            return false;
+        }
+    }
+
+    protected function validateShortCode($code)
+    {
         return preg_match("|[" . self::$chars . "]+|", $code);
     }
 
-    protected function getUrlFromDb($code) {
+    protected function getUrlFromDb($code)
+    {
         $query = "SELECT id, long_url FROM " . self::$table .
             " WHERE BINARY short_code = :short_code LIMIT 1";
         $stmt = $this->pdo->prepare($query);
-        $params=array(
+        $params = array(
             "short_code" => $code
         );
         $stmt->execute($params);
@@ -183,7 +246,8 @@ class ShortUrl
         return (empty($result)) ? false : $result;
     }
 
-    protected function incrementCounter($id) {
+    protected function incrementCounter($id)
+    {
         $query = "UPDATE " . self::$table .
             " SET counter = counter + 1 WHERE id = :id";
         $stmt = $this->pdo->prepare($query);
@@ -193,11 +257,12 @@ class ShortUrl
         $stmt->execute($params);
     }
 
-    public function shortCounter($code) {
+    public function shortCounter($code)
+    {
         $query = "SELECT counter FROM " . self::$table .
             " WHERE short_code = :short_code LIMIT 1";
         $stmt = $this->pdo->prepare($query);
-        $params=array(
+        $params = array(
             "short_code" => $code
         );
         $stmt->execute($params);
