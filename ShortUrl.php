@@ -371,10 +371,12 @@ class ShortUrl
     public function shortCounter($code)
     {
         $query = "SELECT counter FROM " . self::$table .
-            " WHERE short_code = :short_code LIMIT 1";
+            " WHERE short_code = :short_code ".
+            "OR private_url = :private_url LIMIT 1";
         $stmt = $this->pdo->prepare($query);
         $params = array(
-            "short_code" => $code
+            "short_code" => $code,
+            "private_url" => $code
         );
         $stmt->execute($params);
 
