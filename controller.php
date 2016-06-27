@@ -11,7 +11,6 @@ try {
 
         $short = new ShortUrl($db);
         $short_url = $short->urlToShortCode($longUrl, $timeUrl);
-//        var_dump($short_url);
         header('Location: controller.php?action=show&link=' . $short_url);
     } elseif ($action == 'private') {
 
